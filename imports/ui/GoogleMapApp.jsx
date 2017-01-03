@@ -10,7 +10,8 @@ import axios from 'axios';
 
 const HOME_POSITION = {
   //40.6793399,-73.975184
-  lat: 40.6793399,
+  //  lat: 40.6793399,
+  lat: 40.6794399,
   lng: -73.975184
 }
 
