@@ -7,12 +7,17 @@ import axios from 'axios';
 //import {withGoogleMap, GoogleMap} from "react-google-maps";
 //import {GoogleMapsLoader} from "google-maps";
 
+//subways --> https://data.cityofnewyork.us/api/views/he7q-3hwy/rows.json
+//Dallas incidents (no lat long) --> https://www.dallasopendata.com/api/views/9fxf-t2tr/rows.json?accessType=DOWNLOAD
+
+/*global updateMap */
 
 const HOME_POSITION = {
   //40.6793399,-73.975184
   //  lat: 40.6793399,
   lat: 40.6794399,
-  lng: -73.975184
+  //lng: -73.975184
+  lng: -73.977184
 }
 
 const BCL_POSITION = {
@@ -35,7 +40,9 @@ const EIFFEL_TOWER_POSITION = {
   lng: 2.294471
 };
 
-var types= ["venue","pollsite","citibike","liquor_license_applicant"];
+const baseHHApiUrl = 'https://event-tickets-tracker-runderwood5.cs50.io/';
+
+var allTypes= ["venue","pollsite","citibike","liquor_license_applicant"];
 var event_types = ["sports","theater","festival","music","general"]
 var incident_types = ["crash"];
 
@@ -87,9 +94,9 @@ class GoogleMapApp extends React.Component {
     this.panToHome = this.panToHome.bind(this);
     this.addMarker=this.addMarker.bind(this);
     this.updateMap=this.updateMap.bind(this);
+    this.removeMarkers=this.removeMarkers.bind(this);
+    this.configureMap=this.configureMap.bind(this);
   }
-
-
 
   panToArcDeTriomphe() {
     console.log(this)
@@ -113,62 +120,114 @@ class GoogleMapApp extends React.Component {
   
   //addMarker(place) {
   addMarker(place) {
-    //var myObject = JSON.parse(myjsonstring);
-    //$.getJSON("../../api/v1/venues/search", parameters)
-    
-
-    //var lat = Number(place.venue.latitude);
-    //var lng = Number(place.venue.longitude);
-    //var lat=40.6795851;
-    //var lng=-73.9771885;
-    
-
+    //console.log("This place is " + place);
+    var lat = Number(place.venue.latitude);
+    var lng = Number(place.venue.longitude);
+    var myLatLng = {lat:lat, lng:lng};
     //initial myLatLng
-    var myLatLng = {lat:HOME_POSITION.lat, lng:HOME_POSITION.lng};
-    
-    myLatLng = place || myLatLng;
-    
+    //var myLatLng = {lat:HOME_POSITION.lat, lng:HOME_POSITION.lng};
+
     //var image = '../../assets/' + place.venue.venue_type + '-40x40.png'
     //example: https://event-tickets-tracker-runderwood5.cs50.io/assets/pollsite-40x40.png
+    
+    var image = baseHHApiUrl + 'assets/' + place.venue.venue_type + '-40x40.png';
+    
     
     var marker = new google.maps.Marker({
         position: myLatLng,
         map: this.map,
         //title: place.venue.name,
-        title: "home",
-        icon: 'https://event-tickets-tracker-runderwood5.cs50.io/assets/pollsite-40x40.png'
+        title: place.venue.name,
+        icon: image
     });
     
-    
+    // Push Marker Into Array
+    markers.push(marker);
   }
   
-  updateMap() {
-  //update(types) {
-    //adapted from https://daveceddia.com/ajax-requests-in-react/
+  
+  removeMarkers() {
+    // derived from https://developers.google.com/maps/documentation/javascript/examples/marker-remove
+    for (var i = 0; i < markers.length; i++)
+    {
+        markers[i].setMap(null);
+        markers[i] = null;
+    }
+    
+    markers = [];
+  }
+  
+  
+  
+  
+  updateMap(types) {
+    // get map's bounds
+    var locationCenter = this.map.getCenter();
+    var latitude = locationCenter.lat();
+    var longitude = locationCenter.lng();
+    var searchLocation = latitude+","+longitude;
+    
+    
+    //types = types || ["all"];
+    var typesString = allTypes.join("|");
+    console.log("typesString is " + typesString);
+
     //https://event-tickets-tracker-runderwood5.cs50.io/api/v1/venues/search?types=venue%7Cpollsite%7Ccitibike%7Cliquor_license_applicant&location=40.7159%2C-73.98609999999996&radius=1000.0
+
+    // get places within bounds (asynchronously)
+    var parameters = {
+        types:typesString,
+        location:searchLocation,
+        radius:'1000.0'
+    };
+    console.log(parameters);
     
-    var url = 'https://event-tickets-tracker-runderwood5.cs50.io/api/v1/venues/search?types=venue%7Cpollsite%7Ccitibike%7Cliquor_license_applicant&location=40.7159%2C-73.98609999999996&radius=1000.0';
+    //    $.getJSON("../../api/v1/venues/search", parameters)
+  
+    //update(types) {
+      //adapted from https://daveceddia.com/ajax-requests-in-react/
+      //https://event-tickets-tracker-runderwood5.cs50.io/api/v1/venues/search?types=venue%7Cpollsite%7Ccitibike%7Cliquor_license_applicant&location=40.7159%2C-73.98609999999996&radius=1000.0
     
-    axios.get(url)
+    var searchUrl = baseHHApiUrl + 'api/v1/venues/search';
+    console.log(searchUrl);
+    var url = searchUrl + 'api/v1/venues/search?types=venue%7Cpollsite%7Ccitibike%7Cliquor_license_applicant&location=40.7159%2C-73.98609999999996&radius=1000.0';
+    
+    axios.get(searchUrl, {
+      params: {
+        types:typesString,
+        location:searchLocation,
+        radius:'1000.0'
+      }
+    })
       .then(res => {
-        const json_data = res.data.map(obj => obj.data);
-        console.log(json_data);
-        console.log(res.data);
-      
-        //this.setState({ posts });
+        //const json_data = res.data.map(obj => obj.data);
+        //console.log(json_data);
+        //console.log("res.data is " + res.data);
+        for (var i = 0; i < res.data.length; i++) {
+          //console.log(res.data[i]);
+          this.addMarker(res.data[i]);
+          // Add handling such that only markers are added for venues and events
+        }
       });
     }
     
-    //parse JSON into 
+
+  configureMap() {
+    this.map.addListener('dragend', this.updateMap);
+    this.map.addListener('zoom_changed', this.updateMap);
+    this.map.addListener('dragstart', this.removeMarkers);
+  }
     
   //DidMount
   componentDidMount() {
     this.map = new google.maps.Map(this.refs.map, options);
+    //updateMap (i.e., put inital set of marker on)
+    
     this.updateMap();
+    // configure UI once Google Map is idle (i.e., loaded) 
+    google.maps.event.addListenerOnce(this.map, "idle", this.configureMap);  
   }
-    
-    
-    
+  
   
   render() {
     const mapStyle = {
