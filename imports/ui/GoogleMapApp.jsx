@@ -17,6 +17,11 @@ const HOME_POSITION = {
   lng: -73.977184
 }
 
+const SAN_FRAN_POSITION = {
+  lat: 37.75864768667355,
+  lng: -122.43520807885744
+}
+
 const FLL_POSITION = {
   //26.0742392,-80.1527909
   //  lat: 40.6793399,
@@ -45,6 +50,8 @@ const EIFFEL_TOWER_POSITION = {
   lat: 48.858608,
   lng: 2.294471
 };
+
+var searchGeocode;
 
 const baseHHApiUrl = 'https://event-tickets-tracker-runderwood5.cs50.io/';
 
@@ -99,6 +106,7 @@ class GoogleMapApp extends React.Component {
     super();
     this.panToArcDeTriomphe = this.panToArcDeTriomphe.bind(this);
     this.panToAtarashiya = this.panToAtarashiya.bind(this);
+    this.panToSanFran = this.panToSanFran.bind(this);
     this.panToBCL = this.panToBCL.bind(this);
     this.panToFLL = this.panToFLL.bind(this);
     this.panToHome = this.panToHome.bind(this);
@@ -108,16 +116,12 @@ class GoogleMapApp extends React.Component {
     this.removeMarkers=this.removeMarkers.bind(this);
     this.configureMap=this.configureMap.bind(this);
     this.updateMapTweets=this.updateMapTweets.bind(this);
+    this.updateCenter=this.updateCenter.bind(this);
     this.renderTweets=this.renderTweets.bind(this);
   }
   
   renderTweets() {
-
-
     return this.props.tweets.map((tweet) => (
-      //<Tweet lat={tweet.lat} lng={tweet.lng} msg={tweet.text} />
-  
-
       <Tweet key={tweet._id} tweet={tweet} />
     ));
   }
@@ -126,6 +130,12 @@ class GoogleMapApp extends React.Component {
     //console.log(this)
     this.map.panTo(ARC_DE_TRIOMPHE_POSITION);
   }
+  
+  panToSanFran() {
+    //console.log(this)
+    this.map.panTo(SAN_FRAN_POSITION);
+  }
+  
   
   panToAtarashiya() {
     //console.log(this)
@@ -174,8 +184,6 @@ class GoogleMapApp extends React.Component {
   }
 
 
-
-  
   //addMarker(place) {
   addMarker(place) {
     //console.log("This place is " + place);
@@ -192,7 +200,7 @@ class GoogleMapApp extends React.Component {
     
     if (place.type == 'tweet') {
       var image = 'images/twitter-sm.png'; 
-      place.name = place.text;
+      place.name = place.text; //replace this hack later
     } else {
       var image = baseHHApiUrl + 'assets/' + place.venue_type + '-40x40.png';
     }
@@ -200,8 +208,8 @@ class GoogleMapApp extends React.Component {
     var marker = new google.maps.Marker({
         position: myLatLng,
         map: this.map,
-        //title: place.venue.name,
-        title: place.name,
+        type: place.type,
+        title: place.name, //fix this later
         icon: image
     });
     
@@ -209,8 +217,21 @@ class GoogleMapApp extends React.Component {
     markers.push(marker);
     
     //Info windows
+    var content;
     
-    var content = place.name;
+    if (!place.place_name) {
+      content = place.name; //it's either an actual place or a tweet that did not have a place assocated
+    } else { //it's a tweet and a tweet with a place name
+      content = place.name;
+      content += "<br>";
+      content += "tweeted from...";
+      content += place.place_name; //in a tweet for now the place.name is the tweet itself
+    }
+
+      
+    
+    
+    
     content += "<br>";
     
     // See autoLink usage at https://www.npmjs.com/package/autolink.js
@@ -234,20 +255,36 @@ class GoogleMapApp extends React.Component {
     // derived from https://developers.google.com/maps/documentation/javascript/examples/marker-remove
     for (var i = 0; i < markers.length; i++)
     {
-        markers[i].setMap(null);
-        markers[i] = null;
+        //hack for now
+        if (markers[i].type != 'tweet') { //don't delete tweets ... hack for now
+          markers[i].setMap(null);
+          markers[i] = null;
+        }
     }
     
     markers = [];
   }
   
+  updateCenter() {
+    var bounds = this.map.getBounds();
+    var center = bounds.getCenter();
+    var currLat = center.lat();
+    var currLon = center.lng();
+    console.log("Lat", currLat);
+    console.log("Long", currLon);
+    searchGeocode = currLat + "," + currLon + "," + "5mi";
+    console.log("searchGeoCode", searchGeocode);
+    Meteor.subscribe( 'tweets', searchGeocode);
+  }
+  
   updateMapTweets() {
+    this.updateCenter();
+  
     //See http://stackoverflow.com/questions/35312951/uncaught-typeerror-cannot-read-property-x-of-undefined-common-js
-    //console.log("tweets are",Tweets.find({}).fetch());
     var self = this;
     var currTweets = Tweets.find({}).fetch();
     currTweets.forEach(function(tweet){
-      console.log(tweet);
+      console.log("tweet to add!",tweet);
       self.addMarker(tweet);
     });
   }
@@ -272,19 +309,15 @@ class GoogleMapApp extends React.Component {
     var parameters = {
         types:typesString,
         location:searchLocation,
-        radius:'1000.0'
+        radius:'3000.0'
     };
 
     var searchUrl = baseHHApiUrl + 'api/v1/venues/search';
     //console.log(searchUrl);
-    var url = searchUrl + 'api/v1/venues/search?types=venue%7Cpollsite%7Ccitibike%7Cliquor_license_applicant&location=40.7159%2C-73.98609999999996&radius=1000.0';
+    //var url = searchUrl + 'api/v1/venues/search?types=venue%7Cpollsite%7Ccitibike%7Cliquor_license_applicant&location=40.7159%2C-73.98609999999996&radius=1000.0';
     
     axios.get(searchUrl, {
-      params: {
-        types:typesString,
-        location:searchLocation,
-        radius:'1000.0'
-      }
+      params: parameters
     })
       .then(res => {
         //const json_data = res.data.map(obj => obj.data);
@@ -306,11 +339,10 @@ class GoogleMapApp extends React.Component {
     this.map.addListener('dragstart', this.removeMarkers);
     var self = this;
     setInterval(function() {
-      self.updateMapTweets(); // Similar to what you've got
+      console.log("Time to update!");
+      self.updateCenter();
+      self.updateMapTweets(); 
     }, 10000);
-    
-    
-    
   }
     
   //DidMount
@@ -326,16 +358,17 @@ class GoogleMapApp extends React.Component {
   
   render() {
     const mapStyle = {
-      width: 800,
-      height: 500,
+      width: 1100,
+      height: 700,
       border: '1px solid black'
     };
 
     return (
       <div>
         <button onClick={this.panToArcDeTriomphe}>Go to Arc De Triomphe</button>
-        <button onClick={this.panToAtarashiya}>Go to Atarashiya</button>
-        <button onClick={this.panToBCL}>Go to BCL</button>
+        <button onClick={this.panToArcDeTriomphe}>Go to Arc De Triomphe</button>
+        <button onClick={this.panToSanFran}>Go to San Fran</button>
+        <button onClick={this.panToBCL}>Go to Brooklyn</button>
         <button onClick={this.panToFLL}>Go to FLL</button>
 
         <div ref="map" style={mapStyle}>I should be a map!</div>
@@ -361,8 +394,10 @@ GoogleMapApp.propTypes = {
 
 
 export default createContainer(() => {
-    var tweetHandler = Meteor.subscribe("moreTweets");
-    console.log("Tweets are",Tweets.find());
+    var geocode = searchGeocode  || '40.777671,-73.999046,5mi';
+    console.log("In createContainer. searchGeocode is", geocode);
+    var tweetHandler = Meteor.subscribe("moreTweets",geocode);
+    //console.log("Tweets are",Tweets.find());
 
   return {
     //tweetsReady: tweetHandler.ready(),
