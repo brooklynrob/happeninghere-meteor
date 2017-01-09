@@ -1,7 +1,8 @@
 import { Mongo } from 'meteor/mongo';
 import Twitter from 'twitter';
 import { Meteor } from 'meteor/meteor';
-//import Fibers from 'fibers';
+import apiai from 'apiai';
+//var apiai = require('apiai');
 
 export const Tweets = new Mongo.Collection("tweets");
 
@@ -10,6 +11,8 @@ var FLL_geocode = '26.0742392,-80.1527909,10mi';
 var BCL_geocode = '40.676671,-73.987046,10mi';
 var ATARASHIYA_geocode = '34.2688554,135.878034,50mi';
 
+var last_responded_id;
+var last_tweet_hash = new Object();
 
 
 var config = require('../../config.js');
@@ -22,11 +25,91 @@ var client = new Twitter({
 });
 
 
-//function getLocalTweets(locationname,geocode) {
+//let getLocalTweets = ( geocode ) => {
+let getPersonTweets = (monitored_screen_name) => {
+  return new Promise( ( resolve, reject ) => {
+    var tweetSearchParams = {};
+    tweetSearchParams = {screen_name: monitored_screen_name, count:'1', include_rts:false,exclude_replies:true};
+    var last_tweet = {};
+    client.get('statuses/user_timeline',tweetSearchParams, Meteor.bindEnvironment(function(error, tweets, response) {
+      console.log("Getting most recent tweets",tweets[0].text);
+      last_tweet.text = tweets[0].text;
+      last_tweet.id = tweets[0].id_str;
+      last_tweet.user_id = tweets[0].user.id;
+      last_tweet.user_screen_name = tweets[0].user.screen_name;
+      last_tweet.created_at = tweets[0].created_at; //created_at": "Tue Aug 28 21:16:23 +0000 2012"
+      console.log('last tweet is (in the function)', last_tweet);
+      resolve(last_tweet);
+    }));
+  });
+};
+
+
+//function getAPIAIresponse(last_tweet) {
+let getAPIAIresponse = ( last_tweet ) => {
+ return new Promise( ( resolve, reject ) => {
+    var apiai_app = apiai(config.apiai.client_access_token);
+    console.log('About to make a APIAI request');
+    var request = apiai_app.textRequest(last_tweet, {
+      sessionId: '1234567890'
+    });
+    request.on('response', function(response) {
+        console.log('This is the API.AI reponse',response);
+        console.log('The response is ', response.result.fulfillment.speech);
+        resolve(response.result.fulfillment.speech);//return response;
+    });
+    request.on('error', function(error) {
+      console.log("This is the APIAI error",error);
+    });
+    request.end();
+ });
+};
+
+
+function postTweetReply(apiai_response,last_tweet_id,last_tweet_user_screen_name) {
+  console.log("This is postTweetReply function");
+  var status = "@";
+  status += last_tweet_user_screen_name;
+  status += " ";
+  status += apiai_response;
+  var tweetStatusParams = {};
+  tweetStatusParams = {status: status, in_reply_to_status_id:last_tweet_id};
+
+  client.post('statuses/update',tweetStatusParams, Meteor.bindEnvironment(function(error, tweet, response) {
+    if(error) throw error;
+    console.log("Posted was ",tweet);
+    last_tweet_hash[last_tweet_user_screen_name] = last_tweet_id;
+    last_responded_id = last_tweet_id;
+    return tweet;
+  }));
+}
+
+
+function processTweetReplies() {
+    //var last_tweet = getPersonTweets(config.monitored_screen_name);
+    for (let screen_name of config.monitored_screen_names) {
+      console.log("checking...", screen_name);
+      getPersonTweets(config.monitored_screen_name).then( ( last_tweet) => { 
+      //if tweet is recent (within last 30 sec) && tweet has not been responded to previously
+      //created_at {
+      if ((last_tweet.id != last_responded_id) && (last_tweet.id != last_tweet_hash[screen_name])) {
+        getAPIAIresponse(last_tweet.text).then( (apiai_response ) => {
+          postTweetReply(apiai_response,last_tweet.id,last_tweet.user_screen_name);
+        });
+      } // end check of recent time && not previous reply
+    });
+  }
+}
+
+
+
+
+
 
 let getLocalTweets = ( geocode ) => {
-//function getLocalTweets(geocode) {  
+
   var returnedTweets=[];
+  
   return new Promise( ( resolve, reject ) => {
 
 
@@ -36,8 +119,6 @@ let getLocalTweets = ( geocode ) => {
     tweetSearchParams = {q: '', geocode: geocode, count: '300'};
 
     client.get('search/tweets', tweetSearchParams, Meteor.bindEnvironment(function(error, tweets, response){
-      //console.log(tweets);
-      //resolve(tweets);
         if (!error) {
           console.log("Count of tweets collected " + tweets.statuses.length);
           for (var i=0; i < tweets.statuses.length; i++) {
@@ -148,6 +229,8 @@ if (Meteor.isServer) {
     console.log("On server. search geocode is", geocode);
     var self = this;
     Meteor.setInterval(function() {
+      console.log("About to run processTweetReplies for the monitored tweets");
+      processTweetReplies();
       console.log("About to run getLocalTweets for the geocode - ", geocode);
       getLocalTweets(geocode).then( ( returnedTweets) => { 
         console.log('Success');
