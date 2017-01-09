@@ -2,7 +2,6 @@ import { Mongo } from 'meteor/mongo';
 import Twitter from 'twitter';
 import { Meteor } from 'meteor/meteor';
 import apiai from 'apiai';
-//var apiai = require('apiai');
 
 export const Tweets = new Mongo.Collection("tweets");
 
@@ -14,14 +13,20 @@ var ATARASHIYA_geocode = '34.2688554,135.878034,50mi';
 var last_responded_id;
 var last_tweet_hash = new Object();
 
-
 var config = require('../../config.js');
-//make this an include file
-var client = new Twitter({
-  consumer_key: config.twitterapi.consumer_key,
-  consumer_secret: config.twitterapi.consumer_secret,
-  access_token_key: config.twitterapi.access_token_key,
-  access_token_secret: config.twitterapi.access_token_secret
+
+var twitter_read_client = new Twitter({
+  consumer_key: config.twitterapi.read.consumer_key,
+  consumer_secret: config.twitterapi.read.consumer_secret,
+  access_token_key: config.twitterapi.read.access_token_key,
+  access_token_secret: config.twitterapi.read.access_token_secret
+});
+
+var twitter_write_client = new Twitter({
+  consumer_key: config.twitterapi.write.consumer_key,
+  consumer_secret: config.twitterapi.write.consumer_secret,
+  access_token_key: config.twitterapi.write.access_token_key,
+  access_token_secret: config.twitterapi.write.access_token_secret
 });
 
 
@@ -31,7 +36,7 @@ let getPersonTweets = (monitored_screen_name) => {
     var tweetSearchParams = {};
     tweetSearchParams = {screen_name: monitored_screen_name, count:'1', include_rts:false,exclude_replies:true};
     var last_tweet = {};
-    client.get('statuses/user_timeline',tweetSearchParams, Meteor.bindEnvironment(function(error, tweets, response) {
+    twitter_read_client.get('statuses/user_timeline',tweetSearchParams, Meteor.bindEnvironment(function(error, tweets, response) {
       console.log("Getting most recent tweets",tweets[0].text);
       last_tweet.text = tweets[0].text;
       last_tweet.id = tweets[0].id_str;
@@ -43,6 +48,20 @@ let getPersonTweets = (monitored_screen_name) => {
     }));
   });
 };
+
+let getRecentMentions = () => {
+  //https://dev.twitter.com/rest/reference/get/statuses/mentions_timeline
+  var mentionSearchParams = {count:'5'};
+  return new Promise( ( resolve, reject ) => {
+    twitter_read_client.get('statuses/user_timeline',mentionSearchParams, Meteor.bindEnvironment(function(error, tweets, response) {
+      console.log("Last 5 mentions",tweets);
+      resolve(tweets);
+    }));
+  });
+};
+
+
+
 
 
 //function getAPIAIresponse(last_tweet) {
@@ -66,33 +85,43 @@ let getAPIAIresponse = ( last_tweet ) => {
 };
 
 
-function postTweetReply(apiai_response,last_tweet_id,last_tweet_user_screen_name) {
+//function postTweetReply(tweet_to_send,last_tweet_id,last_tweet_user_screen_name) {
+let postTweetReply = (tweet_to_send,last_tweet_id,last_tweet_user_screen_name) => {
   console.log("This is postTweetReply function");
-  var status = "@";
-  status += last_tweet_user_screen_name;
-  status += " ";
-  status += apiai_response;
-  var tweetStatusParams = {};
-  tweetStatusParams = {status: status, in_reply_to_status_id:last_tweet_id};
-
-  client.post('statuses/update',tweetStatusParams, Meteor.bindEnvironment(function(error, tweet, response) {
-    if(error) throw error;
-    console.log("Posted was ",tweet);
-    last_tweet_hash[last_tweet_user_screen_name] = last_tweet_id;
-    last_responded_id = last_tweet_id;
-    return tweet;
-  }));
-}
+  return new Promise( ( resolve, reject ) => {
+    var status;
+    status = "Test! response: ";
+    //var status = "@";
+    //status += last_tweet_user_screen_name;
+    status += " ";
+    status += tweet_to_send;
+    var tweetStatusParams = {};
+    tweetStatusParams = {status: status};
+    tweetStatusParams = {status: status, in_reply_to_status_id:last_tweet_id};
+  
+     //commenting out the writing component
+    twitter_write_client.post('statuses/update',tweetStatusParams, Meteor.bindEnvironment(function(error, tweet, response) {
+      if(error) {
+        reject(error);
+        throw error;
+      }
+      console.log("Tweet posted was ",tweet); 
+      last_tweet_hash[last_tweet_user_screen_name] = last_tweet_id; //make this persitent in the database
+      last_responded_id = last_tweet_id;
+      resolve(tweet);
+    })); 
+  });
+};
 
 
 function processTweetReplies() {
     //var last_tweet = getPersonTweets(config.monitored_screen_name);
     for (let screen_name of config.monitored_screen_names) {
       console.log("checking...", screen_name);
-      getPersonTweets(config.monitored_screen_name).then( ( last_tweet) => { 
+      getPersonTweets(screen_name).then( ( last_tweet) => { 
       //if tweet is recent (within last 30 sec) && tweet has not been responded to previously
-      //created_at {
-      if ((last_tweet.id != last_responded_id) && (last_tweet.id != last_tweet_hash[screen_name])) {
+      // add time check
+      if ((last_tweet.id != last_responded_id) && (last_tweet.id != last_tweet_hash[screen_name])) { //persist that in the database
         getAPIAIresponse(last_tweet.text).then( (apiai_response ) => {
           postTweetReply(apiai_response,last_tweet.id,last_tweet.user_screen_name);
         });
@@ -103,16 +132,9 @@ function processTweetReplies() {
 
 
 
-
-
-
 let getLocalTweets = ( geocode ) => {
-
   var returnedTweets=[];
-  
   return new Promise( ( resolve, reject ) => {
-
-
     var tweetSearchParams= {};
   
     // make query an argument?
@@ -216,21 +238,34 @@ let getLocalTweets = ( geocode ) => {
 };
 
 
+if (Meteor.isServer) {
+  Meteor.setInterval(function() {
+    //console.log("About to run processTweetReplies for the monitored tweets");
+    //processTweetReplies(); //this is the function to process tweet replies
+    getRecentMentions();
+    var currentdate = new Date(); 
+    var datetime = "Last Sync: " + currentdate.getDate() + "/"
+                + (currentdate.getMonth()+1)  + "/" 
+                + currentdate.getFullYear() + " @ "  
+                + currentdate.getHours() + ":"  
+                + currentdate.getMinutes() + ":" 
+                + currentdate.getSeconds();
+    var reply = "Current time is ";
+    reply += datetime;
+    console.log("About to reply with", reply);
+    postTweetReply(reply);
+  }, 600000);
+}
 
-
-var id = 0;
 
 if (Meteor.isServer) {
 // This code only runs on the server
-
   Meteor.publish("moreTweets", function tweetsPublication(geocode) {  //myDate
-    //var returnedTweets = getLocalTweets(BCL_geocode);
     geocode = geocode || BCL_geocode;
     console.log("On server. search geocode is", geocode);
     var self = this;
     Meteor.setInterval(function() {
-      console.log("About to run processTweetReplies for the monitored tweets");
-      processTweetReplies();
+
       console.log("About to run getLocalTweets for the geocode - ", geocode);
       getLocalTweets(geocode).then( ( returnedTweets) => { 
         console.log('Success');
@@ -240,13 +275,8 @@ if (Meteor.isServer) {
           id++;
         });
       });
+    }, 600000);
 
-      //self.added("tweets",id,{text:'test 3',type:'tweet',latitude:40.634671,longitude:-73.983046});
-      //id++;
-      
-    }, 30000);
-
-    
     return this.ready();
     
     //getLocalTweets(FLL_geocode);
