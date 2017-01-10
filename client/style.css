@@ -1,0 +1,58 @@
+/**
+ * styles.css
+ *
+ * ADAPTED FROM and CREDIT TO ...
+ * Computer Science 50
+ * Problem Set 8
+ *
+ * Global CSS.
+ */
+
+/* allow map to fill viewport */
+html, body, #map-canvas, .container-fluid
+{
+    /* height of these elements */
+    height: 100%;
+
+    /* no margin around these elements */
+    margin: 0;
+
+    /* disable scrollbars */
+    overflow: hidden;
+
+    /* no padding within these elements */
+    padding: 0;
+}
+
+/* align form to right of pan control */
+#form
+{
+    /* distance from left edge of viewport */
+    left: 50px;
+
+    /* position form "absolutely" where we want it */
+    position: absolute;
+
+    /* distance from top edge of viewport */
+    top: 28px;
+    
+    background-color: #D3D3D3;
+}
+
+#bottomrow
+{
+    /* distance from left edge of viewport */
+    left: 50px;
+
+    /* position form "absolutely" where we want it */
+    position: absolute;
+
+    /* distance from top edge of viewport */
+    top: 660px;
+    
+    background-color: #D3D3D3;
+    
+    padding: 6px 12px;
+    
+    width: 400px;
+}

@@ -6,6 +6,6 @@ import App from '../imports/ui/App.jsx';
 import GoogleMapApp from '../imports/ui/GoogleMapApp.jsx';
  
 Meteor.startup(() => {
-    render(<App />, document.getElementById('render-target'));
-    render(<GoogleMapApp />, document.getElementById('map-target'));
+    //render(<App />, document.getElementById('render-target'));
+    render(<GoogleMapApp />, document.getElementById('map-canvas'));
 });
