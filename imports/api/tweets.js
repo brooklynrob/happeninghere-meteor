@@ -31,7 +31,7 @@ var twitter_write_client = new Twitter({
 
 
 //let getLocalTweets = ( geocode ) => {
-let getPersonTweets = (monitored_screen_name) => {
+let getWatchedPeopleTweets = (monitored_screen_name) => {
   return new Promise( ( resolve, reject ) => {
     var tweetSearchParams = {};
     tweetSearchParams = {screen_name: monitored_screen_name, count:'1', include_rts:false,exclude_replies:true};
@@ -51,25 +51,31 @@ let getPersonTweets = (monitored_screen_name) => {
 
 let getRecentMentions = () => {
   //https://dev.twitter.com/rest/reference/get/statuses/mentions_timeline
-  var mentionSearchParams = {count:'5'};
+  var mentionSearchParams = {count:'1'};
+  var recent_mentions = [];
   return new Promise( ( resolve, reject ) => {
-    twitter_read_client.get('statuses/user_timeline',mentionSearchParams, Meteor.bindEnvironment(function(error, tweets, response) {
-      console.log("Last 5 mentions",tweets);
-      resolve(tweets);
+    twitter_write_client.get('statuses/mentions_timeline',mentionSearchParams, Meteor.bindEnvironment(function(error, tweets, response) {
+      let i = 0;
+      for (let mention of tweets) {
+        recent_mentions[i] = {};
+        recent_mentions[i].id = mention.id_str;       
+        recent_mentions[i].text = mention.text;
+        recent_mentions[i].screen_name = mention.user.screen_name;
+        i++;
+      }  
+      console.log("Last 1 mentions to write client",recent_mentions);
+      resolve(recent_mentions);
     }));
   });
 };
 
 
-
-
-
 //function getAPIAIresponse(last_tweet) {
-let getAPIAIresponse = ( last_tweet ) => {
+let getAPIAIresponse = ( tweet ) => {
  return new Promise( ( resolve, reject ) => {
     var apiai_app = apiai(config.apiai.client_access_token);
     console.log('About to make a APIAI request');
-    var request = apiai_app.textRequest(last_tweet, {
+    var request = apiai_app.textRequest(tweet, {
       sessionId: '1234567890'
     });
     request.on('response', function(response) {
@@ -86,23 +92,23 @@ let getAPIAIresponse = ( last_tweet ) => {
 
 
 //function postTweetReply(tweet_to_send,last_tweet_id,last_tweet_user_screen_name) {
-let postTweetReply = (tweet_to_send,last_tweet_id,last_tweet_user_screen_name) => {
+let postTweet = (tweet_to_send,last_tweet_id,last_tweet_user_screen_name) => {
   console.log("This is postTweetReply function");
   return new Promise( ( resolve, reject ) => {
-    var status;
-    status = "Test! response: ";
-    //var status = "@";
-    //status += last_tweet_user_screen_name;
-    status += " ";
-    status += tweet_to_send;
     var tweetStatusParams = {};
-    tweetStatusParams = {status: status};
-    tweetStatusParams = {status: status, in_reply_to_status_id:last_tweet_id};
-  
+    var tweet_to_post;
+    if (last_tweet_id && last_tweet_user_screen_name) {
+      tweet_to_post = ("@" + last_tweet_user_screen_name + " " + "TEST: " + tweet_to_send);
+      tweetStatusParams = {status: tweet_to_post, in_reply_to_status_id:last_tweet_id};
+    } else {
+      tweet_to_post = ("TEST: " + tweet_to_send);
+      tweetStatusParams = {status: tweet_to_post};
+    }
+
      //commenting out the writing component
     twitter_write_client.post('statuses/update',tweetStatusParams, Meteor.bindEnvironment(function(error, tweet, response) {
       if(error) {
-        reject(error);
+        //reject(error);
         throw error;
       }
       console.log("Tweet posted was ",tweet); 
@@ -113,23 +119,50 @@ let postTweetReply = (tweet_to_send,last_tweet_id,last_tweet_user_screen_name) =
   });
 };
 
+function processRecentMentions() {
+  //var last_tweet = getPersonTweets(config.monitored_screen_name);
+  getRecentMentions().then((recent_mentions) => {
+    console.log("Recent mentions", recent_mentions);
+    for (let mention of recent_mentions) {
+      console.log("Process mention:", mention);
+      //if tweet is recent (within last 30 sec) && tweet has not been responded to previously
+      // add time check
+      if ((mention.id != last_responded_id) && (mention.id != last_tweet_hash[mention.screen_name])) { //persist that in the database
+        //var self = this;
+        getAPIAIresponse(mention.text).then( (apiai_response ) => {
+          //var tweet_to_send;
+          //tweet_to_send = "@";
+          //tweet_to_send += mention.screen_name;             
+          //tweet_to_send += "Test:";
+          //tweet_to_send += " ";
+          //tweet_to_send += apiai_response;
+          //console.log("self.mention.screen_name is ",self.mention.screen_name);
+          //console.log("mention.screen_name is ",mention.screen_name);
+          //console.log("self.mention.id is ",self.mention.id);
+          //console.log("mention.id is ",mention.id);
+          postTweet(apiai_response,mention.id,mention.screen_name);
+        });
+      } // end check of recent time && not previous reply
+    }
+  });
+}
 
-function processTweetReplies() {
+
+function processWatchedPeopleTweets() {
     //var last_tweet = getPersonTweets(config.monitored_screen_name);
     for (let screen_name of config.monitored_screen_names) {
       console.log("checking...", screen_name);
-      getPersonTweets(screen_name).then( ( last_tweet) => { 
+      getWatchedPeopleTweets(screen_name).then( ( last_tweet) => { 
       //if tweet is recent (within last 30 sec) && tweet has not been responded to previously
       // add time check
       if ((last_tweet.id != last_responded_id) && (last_tweet.id != last_tweet_hash[screen_name])) { //persist that in the database
         getAPIAIresponse(last_tweet.text).then( (apiai_response ) => {
-          postTweetReply(apiai_response,last_tweet.id,last_tweet.user_screen_name);
+          postTweet(apiai_response,last_tweet.id,last_tweet.user_screen_name);
         });
       } // end check of recent time && not previous reply
     });
   }
 }
-
 
 
 let getLocalTweets = ( geocode ) => {
@@ -140,31 +173,11 @@ let getLocalTweets = ( geocode ) => {
     // make query an argument?
     tweetSearchParams = {q: '', geocode: geocode, count: '300'};
 
-    client.get('search/tweets', tweetSearchParams, Meteor.bindEnvironment(function(error, tweets, response){
+    twitter_read_client.get('search/tweets', tweetSearchParams, Meteor.bindEnvironment(function(error, tweets, response){
         if (!error) {
           console.log("Count of tweets collected " + tweets.statuses.length);
           for (var i=0; i < tweets.statuses.length; i++) {
             if(tweets.statuses[i].coordinates) {
-              	
-              // https://dev.twitter.com/overview/api/tweets	
-              // Twitter API example
-              //"coordinates":
-              //{
-              //    "coordinates":
-              //    [
-              //        -75.14310264,
-              //        40.05701649
-              //    ],
-              //    "type":"Point"
-              //}
-                            
-              
-              
-              
-              
-              //console.log("This tweet has coordinates");
-              //console.log("This tweet's text is " + tweets.statuses[i].text);
-              //console.log("This tweet's lat is " + tweets.statuses[i].coordinates.coordinates[1]);
               returnedTweets.push({
                 text:tweets.statuses[i].text,
                 longitude:tweets.statuses[i].coordinates.coordinates[0],
@@ -174,38 +187,18 @@ let getLocalTweets = ( geocode ) => {
               });
             } //end if (tweets.statuses[i].coordinates exists
 
-            if(tweets.statuses[i].place) {
-              // https://dev.twitter.com/overview/api/tweets	
-              // Twitter API example
-
-              //"place":
-              //{
-              //    "attributes":{},
-              //     "bounding_box":
-              //    {
-              //        "coordinates":
-              //        [[
-              //                [-77.119759,38.791645],
-              //                [-76.909393,38.791645],
-              //                [-76.909393,38.995548],
-              //                [-77.119759,38.995548]
-              //        ]],
-              //        "type":"Polygon"
-              //    },
-              //     "country":"United States",
-              //     "country_code":"US",
-              //     "full_name":"Washington, DC",
-              //     "id":"01fbe706f872cb32",
-              //     "name":"Washington",
-              //     "place_type":"city",
-              //     "url": "http://api.twitter.com/1/geo/id/01fbe706f872cb32.json"
-              //}
-              
-              
+            else if(tweets.statuses[i].place) {
               console.log("This tweet has a place!!");
               //console.log(tweets.statuses[i]);
               console.log("This tweet's long is is ", tweets.statuses[i].place.bounding_box.coordinates[0][0][0]);
               console.log("This tweet's lat is is ", tweets.statuses[i].place.bounding_box.coordinates[0][2][1]);
+              // To do -- get more accurate center of polygone
+              // http://stackoverflow.com/questions/3081021/how-to-get-the-center-of-a-polygon-in-google-maps-v3
+              //center.x = x1 + ((x2 - x1) / 2);
+              //center.y = y1 + ((y2 - y1) / 2);
+              
+              
+              
               returnedTweets.push({
                 text:tweets.statuses[i].text,
                 longitude:tweets.statuses[i].place.bounding_box.coordinates[0][0][0], //if polyon do second late
@@ -216,23 +209,17 @@ let getLocalTweets = ( geocode ) => {
                 createdAt: new Date()
               });
             } //end if (tweets.statuses[i].places) exists         
-            
-            
-            
-            
           } //end for
         } // end if no error
     
         else {
           console.log(error);
         }
-    
-    console.log('tweets were returned');
-    console.log('The amount (length) of returnedTweets in upper function is ' + returnedTweets.length);
+    //console.log('tweets were returned');
+    //console.log('The amount (length) of returnedTweets in upper function is ' + returnedTweets.length);
     resolve(returnedTweets);
     
     }));
-
     //reject(console.log("FAILED!"));
   });
 };
@@ -241,20 +228,23 @@ let getLocalTweets = ( geocode ) => {
 if (Meteor.isServer) {
   Meteor.setInterval(function() {
     //console.log("About to run processTweetReplies for the monitored tweets");
-    //processTweetReplies(); //this is the function to process tweet replies
-    getRecentMentions();
+    //processWatchedPeopleTweets(); //this is the function to process tweet replies
+
     var currentdate = new Date(); 
-    var datetime = "Last Sync: " + currentdate.getDate() + "/"
-                + (currentdate.getMonth()+1)  + "/" 
-                + currentdate.getFullYear() + " @ "  
-                + currentdate.getHours() + ":"  
-                + currentdate.getMinutes() + ":" 
-                + currentdate.getSeconds();
-    var reply = "Current time is ";
-    reply += datetime;
-    console.log("About to reply with", reply);
-    postTweetReply(reply);
-  }, 600000);
+    var datetime = currentdate.getDate() + "/"
+      + (currentdate.getMonth()+1)  + "/" 
+      + currentdate.getFullYear() + " @ "  
+      + currentdate.getHours() + ":"  
+      + currentdate.getMinutes() + ":" 
+      + currentdate.getSeconds();
+    var time_reply = "Current GMT is";
+    time_reply += datetime;
+    
+    //console.log("About to reply with", time_reply);
+    //postTweetReply(time_reply);
+    
+    processRecentMentions();
+  }, 600000); //every 10 minutes
 }
 
 
@@ -265,7 +255,7 @@ if (Meteor.isServer) {
     console.log("On server. search geocode is", geocode);
     var self = this;
     Meteor.setInterval(function() {
-
+      var id = 0;
       console.log("About to run getLocalTweets for the geocode - ", geocode);
       getLocalTweets(geocode).then( ( returnedTweets) => { 
         console.log('Success');
@@ -275,14 +265,8 @@ if (Meteor.isServer) {
           id++;
         });
       });
-    }, 600000);
+    }, 120000); //every 2 minutes
 
     return this.ready();
-    
-    //getLocalTweets(FLL_geocode);
-    //getLocalTweets(ATARASHIYA_geocode);
   });
 }
-
-
-
