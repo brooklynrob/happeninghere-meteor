@@ -9,22 +9,23 @@
     * `meteor create --full` to create a scaffolded app.
 
 ### Start a meteor app
-* Running `meteor run --port 8080`
+* Run `meteor run --port 8080`
 
 
-** If you can meteor babel error, run...
-meteor npm install --save babel-runtime
 
-** If problems
-meteor npm install --save meteor-node-stubs
+## Error handling
+* If you can meteor babel error, try...
+  *  `meteor npm install --save babel-runtime`
 
-** Install react components
-meteor npm install --save react react-dom
+* Other useful commands
+  * `meteor npm install --save meteor-node-stubs`
 
-** Go to mongo console through Meteor
-meteor mongo
+* Make sure to install react components!
+  * meteor npm install --save react react-dom
 
-** mongo commands
+## Mongo use
+  * Go to mongo console through Meteor `meteor mongo`
+### mongo commands
 show dbs                                                                #show databases
 show collections                                                        #show collections
 db.venues.find();                                                       #show all venues
@@ -32,8 +33,3 @@ db.venues.insertOne({name:"New Venue"});                                #insert 
 db.venues.updateOne({"name":"New Venue"},{$set:{"city":"New York"}});   #update one record
 
 db.students.drop(); #drop students collection
-
-
-
-
-    
