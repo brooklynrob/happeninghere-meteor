@@ -1,14 +1,15 @@
-** Download and instsall meteor
-# See https://www.meteor.com/install
-curl https://install.meteor.com/ | sh
+## Meteor Use
+* Download and install meteor
+    * See https://www.meteor.com/install
+    ** Command: `curl https://install.meteor.com/ | sh`
 
-** Create a meteor app
-meteor create --bare to create an empty app.  
-meteor create --full to create a scaffolded app.
+### Creating a meteor app
+* Creating an app
+    * `meteor create --bare` to create an empty app.  
+    * `meteor create --full` to create a scaffolded app.
 
-
-** Start a meteor app
-meteor run --port 8080
+### Start a meteor app
+* Running `meteor run --port 8080`
 
 
 ** If you can meteor babel error, run...
@@ -31,10 +32,6 @@ db.venues.insertOne({name:"New Venue"});                                #insert 
 db.venues.updateOne({"name":"New Venue"},{$set:{"city":"New York"}});   #update one record
 
 db.students.drop(); #drop students collection
-
-
-        <button onClick={this.panToHome}>Go to Home</button>
-        <button onClick={this.addMarker}>Add Home Marker</button>
 
 
 
