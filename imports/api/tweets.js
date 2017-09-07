@@ -98,10 +98,10 @@ let postTweet = (tweet_to_send,last_tweet_id,last_tweet_user_screen_name) => {
     var tweetStatusParams = {};
     var tweet_to_post;
     if (last_tweet_id && last_tweet_user_screen_name) {
-      tweet_to_post = ("@" + last_tweet_user_screen_name + " " + "TEST: " + tweet_to_send);
+      tweet_to_post = ("@" + last_tweet_user_screen_name + " " + "[BOT:] " + tweet_to_send);
       tweetStatusParams = {status: tweet_to_post, in_reply_to_status_id:last_tweet_id};
     } else {
-      tweet_to_post = ("TEST: " + tweet_to_send);
+      tweet_to_post = ("[BOT:] " + tweet_to_send);
       tweetStatusParams = {status: tweet_to_post};
     }
 
@@ -127,7 +127,7 @@ function processRecentMentions() {
       console.log("Process mention:", mention);
       //if tweet is recent (within last 30 sec) && tweet has not been responded to previously
       // add time check
-      if ((mention.id != last_responded_id) && (mention.id != last_tweet_hash[mention.screen_name])) { //persist that in the database
+      if ((mention.screen_name != config.twitterapi.write.screen_name) && (mention.id != last_responded_id) && (mention.id != last_tweet_hash[mention.screen_name])) { //persist that in the database
         //var self = this;
         getAPIAIresponse(mention.text).then( (apiai_response ) => {
           //var tweet_to_send;
@@ -171,44 +171,50 @@ let getLocalTweets = ( geocode ) => {
     var tweetSearchParams= {};
   
     // make query an argument?
-    tweetSearchParams = {q: '', geocode: geocode, count: '300'};
+    tweetSearchParams = {q: '', geocode: geocode, count: '300', result_type:'recent'};
 
     twitter_read_client.get('search/tweets', tweetSearchParams, Meteor.bindEnvironment(function(error, tweets, response){
         if (!error) {
           console.log("Count of tweets collected " + tweets.statuses.length);
-          for (var i=0; i < tweets.statuses.length; i++) {
-            if(tweets.statuses[i].coordinates) {
+          for (let tweet of tweets.statuses) {
+          //for (var i=0; i < tweets.statuses.length; i++) {
+            if(tweet.coordinates) {
               returnedTweets.push({
-                text:tweets.statuses[i].text,
-                longitude:tweets.statuses[i].coordinates.coordinates[0],
-                latitude:tweets.statuses[i].coordinates.coordinates[1],
+                text:tweet.text,
+                longitude:tweet.coordinates.coordinates[0],
+                latitude:tweet.coordinates.coordinates[1],
                 type:'tweet',
                 createdAt: new Date()
               });
-            } //end if (tweets.statuses[i].coordinates exists
+            } //end if coordinates exists
 
-            else if(tweets.statuses[i].place) {
+            else if(tweet.place) {
               console.log("This tweet has a place!!");
-              //console.log(tweets.statuses[i]);
-              console.log("This tweet's long is is ", tweets.statuses[i].place.bounding_box.coordinates[0][0][0]);
-              console.log("This tweet's lat is is ", tweets.statuses[i].place.bounding_box.coordinates[0][2][1]);
+              console.log("This tweet's long is is ", tweet.place.bounding_box.coordinates[0][0][0]);
+              console.log("This tweet's lat is is ", tweet.place.bounding_box.coordinates[0][2][1]);
               // To do -- get more accurate center of polygone
               // http://stackoverflow.com/questions/3081021/how-to-get-the-center-of-a-polygon-in-google-maps-v3
               //center.x = x1 + ((x2 - x1) / 2);
               //center.y = y1 + ((y2 - y1) / 2);
-              
+              var calc_center_lng = tweet.place.bounding_box.coordinates[0][0][0]
+                + ((tweet.place.bounding_box.coordinates[0][2][0]
+                - tweet.place.bounding_box.coordinates[0][0][0]) 
+                / 2);
+              var calc_center_lat = tweet.place.bounding_box.coordinates[0][0][1]
+                + ((tweet.place.bounding_box.coordinates[0][2][1]
+                - tweet.place.bounding_box.coordinates[0][0][1]) 
+                / 2);
               
               
               returnedTweets.push({
-                text:tweets.statuses[i].text,
-                longitude:tweets.statuses[i].place.bounding_box.coordinates[0][0][0], //if polyon do second late
-                latitude:tweets.statuses[i].place.bounding_box.coordinates[0][2][1],
-                place_name: tweets.statuses[i].place.name,
-                place_type: tweets.statuses[i].place.place_type,
+                text:tweet.text,
+                longitude:calc_center_lng,
+                latitude:calc_center_lat,
+                place_name: tweet.place.name,
                 type:'tweet',
                 createdAt: new Date()
               });
-            } //end if (tweets.statuses[i].places) exists         
+            } //end if places exists       
           } //end for
         } // end if no error
     
@@ -244,7 +250,7 @@ if (Meteor.isServer) {
     //postTweetReply(time_reply);
     
     processRecentMentions();
-  }, 600000); //every 10 minutes
+  }, 120000); //every 10 minutes
 }
 
 
@@ -254,8 +260,8 @@ if (Meteor.isServer) {
     geocode = geocode || BCL_geocode;
     console.log("On server. search geocode is", geocode);
     var self = this;
+    var id = 0;
     Meteor.setInterval(function() {
-      var id = 0;
       console.log("About to run getLocalTweets for the geocode - ", geocode);
       getLocalTweets(geocode).then( ( returnedTweets) => { 
         console.log('Success');

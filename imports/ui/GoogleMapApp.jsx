@@ -3,17 +3,14 @@ import ReactDOM from 'react-dom';
 import { Meteor } from 'meteor/meteor';
 import { createContainer } from 'meteor/react-meteor-data';
 import axios from 'axios';
-import autoLink from 'autolink.js'
+import autoLink from 'autolink.js';
 
 import { Tweets } from '../api/tweets.js';
 import Tweet from './Tweet.jsx';
 
 
 const HOME_POSITION = {
-  //40.6793399,-73.975184
-  //  lat: 40.6793399,
   lat: 40.6794399,
-  //lng: -73.975184
   lng: -73.977184
 }
 
@@ -22,6 +19,13 @@ const SAN_FRAN_POSITION = {
   lng: -122.43520807885744
 }
 
+// Kyoto, Japan
+const KYOTO_POSITION = {
+  lat: 35.0061653,
+  lng: 135.7259305
+}
+
+// Fort Lauderdale
 const FLL_POSITION = {
   //26.0742392,-80.1527909
   //  lat: 40.6793399,
@@ -29,7 +33,6 @@ const FLL_POSITION = {
   //lng: -73.975184
   lng: -80.1527909
 }
-
 
 const BCL_POSITION = {
   lat: 40.676671,
@@ -109,6 +112,7 @@ class GoogleMapApp extends React.Component {
     this.panToSanFran = this.panToSanFran.bind(this);
     this.panToBCL = this.panToBCL.bind(this);
     this.panToFLL = this.panToFLL.bind(this);
+    this.panToKyoto = this.panToKyoto.bind(this);
     this.panToHome = this.panToHome.bind(this);
     this.addMarker=this.addMarker.bind(this);
     this.updateMap=this.updateMap.bind(this);
@@ -127,35 +131,33 @@ class GoogleMapApp extends React.Component {
   }
   
   panToArcDeTriomphe() {
-    //console.log(this)
     this.map.panTo(ARC_DE_TRIOMPHE_POSITION);
   }
   
   panToSanFran() {
-    //console.log(this)
     this.map.panTo(SAN_FRAN_POSITION);
+  }
+  
+  panToKyoto() {
+    this.map.panTo(KYOTO_POSITION);
   }
   
   
   panToAtarashiya() {
-    //console.log(this)
     this.map.panTo(ATARASHIYA_POSITION);
   }
   
   panToBCL() {
-    //console.log(this)
     this.map.panTo(BCL_POSITION);
     this.updateMaps;
   }
   
   panToFLL() {
-    //console.log(this)
     this.map.panTo(FLL_POSITION);
     this.updateMaps;
   }
   
   panToHome() {
-    console.log(this);
     this.map.panTo(HOME_POSITION);
     this.updateMaps;
   }
@@ -184,9 +186,7 @@ class GoogleMapApp extends React.Component {
   }
 
 
-  //addMarker(place) {
-  addMarker(place) {
-    //console.log("This place is " + place);
+  addMarker(place) { 
     var lat = Number(place.latitude);
     var lng = Number(place.longitude);
     var myLatLng = {lat:lat, lng:lng};
@@ -224,7 +224,8 @@ class GoogleMapApp extends React.Component {
     } else { //it's a tweet and a tweet with a place name
       content = place.name;
       content += "<br>";
-      content += "tweeted from...";
+      content += "tweeted from:";
+      content += "<br>";
       content += place.place_name; //in a tweet for now the place.name is the tweet itself
     }
 
@@ -270,10 +271,7 @@ class GoogleMapApp extends React.Component {
     var center = bounds.getCenter();
     var currLat = center.lat();
     var currLon = center.lng();
-    console.log("Lat", currLat);
-    console.log("Long", currLon);
-    searchGeocode = currLat + "," + currLon + "," + "5mi";
-    console.log("searchGeoCode", searchGeocode);
+    searchGeocode = currLat + "," + currLon + "," + "3mi";
     Meteor.subscribe( 'tweets', searchGeocode);
   }
   
@@ -284,11 +282,10 @@ class GoogleMapApp extends React.Component {
     var self = this;
     var currTweets = Tweets.find({}).fetch();
     currTweets.forEach(function(tweet){
-      console.log("tweet to add!",tweet);
+      console.log("Tweet to add!",tweet.text);
       self.addMarker(tweet);
     });
   }
-  
   
   
   updateMap(types) {
@@ -297,23 +294,17 @@ class GoogleMapApp extends React.Component {
     var latitude = locationCenter.lat();
     var longitude = locationCenter.lng();
     var searchLocation = latitude+","+longitude;
-    
-    
-    //types = types || ["all"];
-    var typesString = allTypes.join("|");
-    //console.log("typesString is " + typesString);
+    var typesString = allTypes.join("|");     //types = types || ["all"];
 
     //https://event-tickets-tracker-runderwood5.cs50.io/api/v1/venues/search?types=venue%7Cpollsite%7Ccitibike%7Cliquor_license_applicant&location=40.7159%2C-73.98609999999996&radius=1000.0
-
     // get places within bounds (asynchronously)
     var parameters = {
         types:typesString,
         location:searchLocation,
-        radius:'3000.0'
+        radius:'3000.0' //made this based on the map
     };
 
     var searchUrl = baseHHApiUrl + 'api/v1/venues/search';
-    //console.log(searchUrl);
     //var url = searchUrl + 'api/v1/venues/search?types=venue%7Cpollsite%7Ccitibike%7Cliquor_license_applicant&location=40.7159%2C-73.98609999999996&radius=1000.0';
     
     axios.get(searchUrl, {
@@ -348,9 +339,7 @@ class GoogleMapApp extends React.Component {
   //DidMount
   componentDidMount() {
     this.map = new google.maps.Map(this.refs.map, options);
-    //updateMap (i.e., put inital set of marker on)
-    
-    this.updateMap();
+    this.updateMap(); //updateMap (i.e., put inital set of marker on)
     // configure UI once Google Map is idle (i.e., loaded) 
     google.maps.event.addListenerOnce(this.map, "idle", this.configureMap);
   }
@@ -365,23 +354,24 @@ class GoogleMapApp extends React.Component {
 
     return (
       <div>
-        <button onClick={this.panToArcDeTriomphe}>Go to Arc De Triomphe</button>
-        <button onClick={this.panToArcDeTriomphe}>Go to Arc De Triomphe</button>
-        <button onClick={this.panToSanFran}>Go to San Fran</button>
-        <button onClick={this.panToBCL}>Go to Brooklyn</button>
-        <button onClick={this.panToFLL}>Go to FLL</button>
-
         <div ref="map" style={mapStyle}>I should be a map!</div>
-        <div className="container">
-          <header>
-            <h2>Local area tweets</h2>
-            <p>
-              {this.renderTweets()}
-            </p>
-          </header>
-        </div>
+        
 
-          
+        
+        <div id="bottomrow">
+          <button onClick={this.panToArcDeTriomphe}>Go to Arc De Triomphe</button>
+          <button onClick={this.panToKyoto}>Go to Kyoto</button>
+          <button onClick={this.panToAtarashiya}>Go to a cool Ryokan in Japan</button>
+          <button onClick={this.panToSanFran}>Go to San Fran</button>
+          <button onClick={this.panToBCL}>Go to Brooklyn</button>
+        </div>
+        
+        <header>
+          <h2>Local area tweets</h2>
+          <p>
+            {this.renderTweets()}
+          </p>
+        </header>
       </div>
     );
   }
@@ -395,7 +385,7 @@ GoogleMapApp.propTypes = {
 
 export default createContainer(() => {
     var geocode = searchGeocode  || '40.777671,-73.999046,5mi';
-    console.log("In createContainer. searchGeocode is", geocode);
+    //console.log("In createContainer. searchGeocode is", geocode);
     var tweetHandler = Meteor.subscribe("moreTweets",geocode);
     //console.log("Tweets are",Tweets.find());
 
